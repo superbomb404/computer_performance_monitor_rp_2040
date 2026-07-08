@@ -18,16 +18,22 @@ extern "C"
         LCD_COMMAND_GPU_RAM_UTILIZATION_RATE,
         LCD_COMMAND_GPU_RAM_UESD,
         LCD_COMMAND_GPU_RAM_TOTAL,
+        LCD_COMMAND_RAM_UTILIZATION_RATE_DECIMAL,
+        LCD_COMMAND_RAM_UESD_DECIMAL,
+        LCD_COMMAND_RAM_TOTAL_DECIMAL,
+        LCD_COMMAND_GPU_RAM_UTILIZATION_RATE_DECIMAL,
+        LCD_COMMAND_GPU_RAM_UESD_DECIMAL,
+        LCD_COMMAND_GPU_RAM_TOTAL_DECIMAL,
     } LCD_COMMAND;
 
     typedef struct
     {
         LCD_COMMAND command;
-        uint8_t *data;
+        uint8_t data;
     } config_lcd;
 
     void queue_init();
-    void x_queue_lcd_send(LCD_COMMAND command, uint8_t *data);
+    void x_queue_lcd_send(LCD_COMMAND command, uint8_t data);
 
     extern QueueHandle_t x_queue_lcd;
 

@@ -371,7 +371,8 @@ lv_font_t HarmonyOS_2bit = {
     .underline_position = -1,
     .underline_thickness = 1,
 #endif
-    .dsc = &font_dsc           /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
+    .dsc = &font_dsc,          /*The custom font data. Will be accessed by `get_glyph_bitmap/dsc` */
+    .fallback = &lv_font_montserrat_14
 };
 
 

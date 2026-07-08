@@ -207,6 +207,31 @@ uint32_t calc_color(uint8_t rate)
     return (red << 16) | (green << 8) | blue;
 }
 
+static void split_to_tenths(uint8_t value, uint8_t hundredths, uint16_t *whole, uint8_t *tenths)
+{
+    uint16_t rounded_tenths = ((uint16_t)value * 100 + hundredths + 5) / 10;
+    *whole = rounded_tenths / 10;
+    *tenths = rounded_tenths % 10;
+}
+
+static void update_gpu_ram_label(lv_obj_t *label,
+                                 uint8_t utilization, uint8_t utilization_decimal,
+                                 uint8_t used, uint8_t used_decimal,
+                                 uint8_t total, uint8_t total_decimal)
+{
+    uint16_t utilization_whole, used_whole, total_whole;
+    uint8_t utilization_tenths, used_tenths, total_tenths;
+
+    split_to_tenths(utilization, utilization_decimal, &utilization_whole, &utilization_tenths);
+    split_to_tenths(used, used_decimal, &used_whole, &used_tenths);
+    split_to_tenths(total, total_decimal, &total_whole, &total_tenths);
+
+    lv_label_set_text_fmt(label, "GPU内存利用率: %u.%u%%（%u.%uGB/%u.%uGB）",
+                          utilization_whole, utilization_tenths,
+                          used_whole, used_tenths,
+                          total_whole, total_tenths);
+}
+
 void v_task_lcd_Init(void *pvParameters)
 {
     // 初始LCD屏幕
@@ -473,66 +498,92 @@ void v_task_lcd_Init(void *pvParameters)
     lv_obj_add_style(bar4, &bar_style, 0);
     lv_obj_add_style(bar5, &bar_style, 0);
 
-    config_lcd *lcd_data_temp;
+    config_lcd lcd_data_temp;
     uint8_t ram_utilization_rate = 0, ram_used = 0, ram_total = 0, gpu_ram_utilization_rate = 0, gpu_ram_used = 0, gpu_ram_total = 0;
+    uint8_t ram_utilization_rate_decimal = 0, ram_used_decimal = 0, ram_total_decimal = 0;
+    uint8_t gpu_ram_utilization_rate_decimal = 0, gpu_ram_used_decimal = 0, gpu_ram_total_decimal = 0;
     while (1)
     {
         if (x_queue_lcd != 0 && xQueueReceive(x_queue_lcd, &(lcd_data_temp), 50))
         {
-            switch (lcd_data_temp->command)
+            switch (lcd_data_temp.command)
             {
             case LCD_COMMAND_CPU_TEMPERATUE:
-                lv_label_set_text_fmt(label0, "CPU温度：%d℃", *lcd_data_temp->data);
-                lv_bar_set_value(bar0, *lcd_data_temp->data, LV_ANIM_OFF);
-                lv_obj_set_style_bg_color(bar0, lv_color_hex(calc_color(*lcd_data_temp->data)), LV_PART_INDICATOR);
+                lv_label_set_text_fmt(label0, "CPU温度：%d℃", lcd_data_temp.data);
+                lv_bar_set_value(bar0, lcd_data_temp.data, LV_ANIM_OFF);
+                lv_obj_set_style_bg_color(bar0, lv_color_hex(calc_color(lcd_data_temp.data)), LV_PART_INDICATOR);
                 break;
             case LCD_COMMAND_CPU_UTILIZATION_RATE:
-                lv_label_set_text_fmt(label1, "CPU利用率: %d%%", *lcd_data_temp->data);
-                lv_bar_set_value(bar1, *lcd_data_temp->data, LV_ANIM_OFF);
-                lv_obj_set_style_bg_color(bar1, lv_color_hex(calc_color(*lcd_data_temp->data)), LV_PART_INDICATOR);
+                lv_label_set_text_fmt(label1, "CPU利用率: %d%%", lcd_data_temp.data);
+                lv_bar_set_value(bar1, lcd_data_temp.data, LV_ANIM_OFF);
+                lv_obj_set_style_bg_color(bar1, lv_color_hex(calc_color(lcd_data_temp.data)), LV_PART_INDICATOR);
                 break;
             case LCD_COMMAND_RAM_UTILIZATION_RATE:
-                ram_utilization_rate = *lcd_data_temp->data;
-                lv_label_set_text_fmt(label2, "RAM利用率: %d%%（%dGB/%dGB）", ram_utilization_rate, ram_used, ram_total);
+                ram_utilization_rate = lcd_data_temp.data;
+                lv_label_set_text_fmt(label2, "RAM利用率: %d.%02d%%（%d.%02dGB/%d.%02dGB）", ram_utilization_rate, ram_utilization_rate_decimal, ram_used, ram_used_decimal, ram_total, ram_total_decimal);
                 lv_bar_set_value(bar2, ram_utilization_rate, LV_ANIM_OFF);
                 lv_obj_set_style_bg_color(bar2, lv_color_hex(calc_color(ram_utilization_rate)), LV_PART_INDICATOR);
                 break;
             case LCD_COMMAND_RAM_UESD:
-                ram_used = *lcd_data_temp->data;
-                lv_label_set_text_fmt(label2, "RAM利用率: %d%%（%dGB/%dGB）", ram_utilization_rate, ram_used, ram_total);
+                ram_used = lcd_data_temp.data;
+                lv_label_set_text_fmt(label2, "RAM利用率: %d.%02d%%（%d.%02dGB/%d.%02dGB）", ram_utilization_rate, ram_utilization_rate_decimal, ram_used, ram_used_decimal, ram_total, ram_total_decimal);
                 break;
             case LCD_COMMAND_RAM_TOTAL:
-                ram_total = *lcd_data_temp->data;
-                lv_label_set_text_fmt(label2, "RAM利用率: %d%%（%dGB/%dGB）", ram_utilization_rate, ram_used, ram_total);
+                ram_total = lcd_data_temp.data;
+                lv_label_set_text_fmt(label2, "RAM利用率: %d.%02d%%（%d.%02dGB/%d.%02dGB）", ram_utilization_rate, ram_utilization_rate_decimal, ram_used, ram_used_decimal, ram_total, ram_total_decimal);
                 break;
             case LCD_COMMAND_GPU_TEMPERATUE:
-                lv_label_set_text_fmt(label3, "GPU温度：%d℃", *lcd_data_temp->data);
-                lv_bar_set_value(bar3, *lcd_data_temp->data, LV_ANIM_OFF);
-                lv_obj_set_style_bg_color(bar3, lv_color_hex(calc_color(*lcd_data_temp->data)), LV_PART_INDICATOR);
+                lv_label_set_text_fmt(label3, "GPU温度：%d℃", lcd_data_temp.data);
+                lv_bar_set_value(bar3, lcd_data_temp.data, LV_ANIM_OFF);
+                lv_obj_set_style_bg_color(bar3, lv_color_hex(calc_color(lcd_data_temp.data)), LV_PART_INDICATOR);
                 break;
             case LCD_COMMAND_GPU_UTILIZATION_RATE:
-                lv_label_set_text_fmt(label4, "GPU利用率: %d%%", *lcd_data_temp->data);
-                lv_bar_set_value(bar4, *lcd_data_temp->data, LV_ANIM_OFF);
-                lv_obj_set_style_bg_color(bar4, lv_color_hex(calc_color(*lcd_data_temp->data)), LV_PART_INDICATOR);
+                lv_label_set_text_fmt(label4, "GPU利用率: %d%%", lcd_data_temp.data);
+                lv_bar_set_value(bar4, lcd_data_temp.data, LV_ANIM_OFF);
+                lv_obj_set_style_bg_color(bar4, lv_color_hex(calc_color(lcd_data_temp.data)), LV_PART_INDICATOR);
                 break;
             case LCD_COMMAND_GPU_RAM_UTILIZATION_RATE:
-                gpu_ram_utilization_rate = *lcd_data_temp->data;
-                lv_label_set_text_fmt(label5, "GPU内存利用率: %d%%（%dGB/%dGB）", gpu_ram_utilization_rate, gpu_ram_used, gpu_ram_total);
+                gpu_ram_utilization_rate = lcd_data_temp.data;
+                update_gpu_ram_label(label5, gpu_ram_utilization_rate, gpu_ram_utilization_rate_decimal, gpu_ram_used, gpu_ram_used_decimal, gpu_ram_total, gpu_ram_total_decimal);
                 lv_bar_set_value(bar5, gpu_ram_utilization_rate, LV_ANIM_OFF);
                 lv_obj_set_style_bg_color(bar5, lv_color_hex(calc_color(gpu_ram_utilization_rate)), LV_PART_INDICATOR);
                 break;
             case LCD_COMMAND_GPU_RAM_UESD:
-                gpu_ram_used = *lcd_data_temp->data;
-                lv_label_set_text_fmt(label5, "GPU内存利用率: %d%%（%dGB/%dGB）", gpu_ram_utilization_rate, gpu_ram_used, gpu_ram_total);
+                gpu_ram_used = lcd_data_temp.data;
+                update_gpu_ram_label(label5, gpu_ram_utilization_rate, gpu_ram_utilization_rate_decimal, gpu_ram_used, gpu_ram_used_decimal, gpu_ram_total, gpu_ram_total_decimal);
                 break;
             case LCD_COMMAND_GPU_RAM_TOTAL:
-                gpu_ram_total = *lcd_data_temp->data;
-                lv_label_set_text_fmt(label5, "GPU内存利用率: %d%%（%dGB/%dGB）", gpu_ram_utilization_rate, gpu_ram_used, gpu_ram_total);
+                gpu_ram_total = lcd_data_temp.data;
+                update_gpu_ram_label(label5, gpu_ram_utilization_rate, gpu_ram_utilization_rate_decimal, gpu_ram_used, gpu_ram_used_decimal, gpu_ram_total, gpu_ram_total_decimal);
+                break;
+            case LCD_COMMAND_RAM_UTILIZATION_RATE_DECIMAL:
+                ram_utilization_rate_decimal = lcd_data_temp.data;
+                lv_label_set_text_fmt(label2, "RAM利用率: %d.%02d%%（%d.%02dGB/%d.%02dGB）", ram_utilization_rate, ram_utilization_rate_decimal, ram_used, ram_used_decimal, ram_total, ram_total_decimal);
+                break;
+            case LCD_COMMAND_RAM_UESD_DECIMAL:
+                ram_used_decimal = lcd_data_temp.data;
+                lv_label_set_text_fmt(label2, "RAM利用率: %d.%02d%%（%d.%02dGB/%d.%02dGB）", ram_utilization_rate, ram_utilization_rate_decimal, ram_used, ram_used_decimal, ram_total, ram_total_decimal);
+                break;
+            case LCD_COMMAND_RAM_TOTAL_DECIMAL:
+                ram_total_decimal = lcd_data_temp.data;
+                lv_label_set_text_fmt(label2, "RAM利用率: %d.%02d%%（%d.%02dGB/%d.%02dGB）", ram_utilization_rate, ram_utilization_rate_decimal, ram_used, ram_used_decimal, ram_total, ram_total_decimal);
+                break;
+            case LCD_COMMAND_GPU_RAM_UTILIZATION_RATE_DECIMAL:
+                gpu_ram_utilization_rate_decimal = lcd_data_temp.data;
+                update_gpu_ram_label(label5, gpu_ram_utilization_rate, gpu_ram_utilization_rate_decimal, gpu_ram_used, gpu_ram_used_decimal, gpu_ram_total, gpu_ram_total_decimal);
+                break;
+            case LCD_COMMAND_GPU_RAM_UESD_DECIMAL:
+                gpu_ram_used_decimal = lcd_data_temp.data;
+                update_gpu_ram_label(label5, gpu_ram_utilization_rate, gpu_ram_utilization_rate_decimal, gpu_ram_used, gpu_ram_used_decimal, gpu_ram_total, gpu_ram_total_decimal);
+                break;
+            case LCD_COMMAND_GPU_RAM_TOTAL_DECIMAL:
+                gpu_ram_total_decimal = lcd_data_temp.data;
+                update_gpu_ram_label(label5, gpu_ram_utilization_rate, gpu_ram_utilization_rate_decimal, gpu_ram_used, gpu_ram_used_decimal, gpu_ram_total, gpu_ram_total_decimal);
+                break;
             default:
                 break;
             }
         }
-
         lv_timer_handler();
         vTaskDelay(1);
     }
@@ -595,7 +646,7 @@ void v_task_usb_uart(void *pvParameters)
                 }
                 break;
             case 0x01:
-                x_queue_lcd_send(LCD_COMMAND_CPU_TEMPERATUE, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_CPU_TEMPERATUE, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x01;
@@ -603,7 +654,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x02:
-                x_queue_lcd_send(LCD_COMMAND_CPU_UTILIZATION_RATE, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_CPU_UTILIZATION_RATE, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x02;
@@ -611,7 +662,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x03:
-                x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x03;
@@ -619,7 +670,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x04:
-                x_queue_lcd_send(LCD_COMMAND_RAM_UESD, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_RAM_UESD, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x04;
@@ -627,7 +678,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x05:
-                x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x05;
@@ -635,7 +686,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x06:
-                x_queue_lcd_send(LCD_COMMAND_GPU_TEMPERATUE, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_GPU_TEMPERATUE, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x06;
@@ -643,7 +694,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x07:
-                x_queue_lcd_send(LCD_COMMAND_GPU_UTILIZATION_RATE, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_GPU_UTILIZATION_RATE, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x07;
@@ -651,7 +702,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x08:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x08;
@@ -659,7 +710,7 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x09:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x09;
@@ -667,10 +718,58 @@ void v_task_usb_uart(void *pvParameters)
                 usb_uart_send(ret_buf, 4);
                 break;
             case 0x0A:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL, &buf[3]);
+                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL, buf[3]);
                 ret_buf[0] = 0x5a;
                 ret_buf[1] = 0xa5;
                 ret_buf[2] = 0x0A;
+                ret_buf[3] = 0xff;
+                usb_uart_send(ret_buf, 4);
+                break;
+            case 0x0B:
+                x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE_DECIMAL, buf[3]);
+                ret_buf[0] = 0x5a;
+                ret_buf[1] = 0xa5;
+                ret_buf[2] = 0x0B;
+                ret_buf[3] = 0xff;
+                usb_uart_send(ret_buf, 4);
+                break;
+            case 0x0C:
+                x_queue_lcd_send(LCD_COMMAND_RAM_UESD_DECIMAL, buf[3]);
+                ret_buf[0] = 0x5a;
+                ret_buf[1] = 0xa5;
+                ret_buf[2] = 0x0C;
+                ret_buf[3] = 0xff;
+                usb_uart_send(ret_buf, 4);
+                break;
+            case 0x0D:
+                x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL_DECIMAL, buf[3]);
+                ret_buf[0] = 0x5a;
+                ret_buf[1] = 0xa5;
+                ret_buf[2] = 0x0D;
+                ret_buf[3] = 0xff;
+                usb_uart_send(ret_buf, 4);
+                break;
+            case 0x0E:
+                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE_DECIMAL, buf[3]);
+                ret_buf[0] = 0x5a;
+                ret_buf[1] = 0xa5;
+                ret_buf[2] = 0x0E;
+                ret_buf[3] = 0xff;
+                usb_uart_send(ret_buf, 4);
+                break;
+            case 0x0F:
+                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD_DECIMAL, buf[3]);
+                ret_buf[0] = 0x5a;
+                ret_buf[1] = 0xa5;
+                ret_buf[2] = 0x0F;
+                ret_buf[3] = 0xff;
+                usb_uart_send(ret_buf, 4);
+                break;
+            case 0x10:
+                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL_DECIMAL, buf[3]);
+                ret_buf[0] = 0x5a;
+                ret_buf[1] = 0xa5;
+                ret_buf[2] = 0x10;
                 ret_buf[3] = 0xff;
                 usb_uart_send(ret_buf, 4);
                 break;
