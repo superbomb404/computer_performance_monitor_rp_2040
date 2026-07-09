@@ -1,9 +1,0 @@
-    .syntax unified
-    .section .rodata.doro_frames, "a", %progbits
-    .global doro_frames_rgb565
-    .global doro_frames_rgb565_end
-    .balign 4
-doro_frames_rgb565:
-    .incbin "@DORO_FRAMES_BIN_ASM@"
-    .balign 4
-doro_frames_rgb565_end:

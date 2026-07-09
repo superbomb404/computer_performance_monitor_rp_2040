@@ -12,7 +12,7 @@
 #include "pico/stdlib.h"
 #include <stdio.h>
 #include "rtos_queue.h"
-#include "doro_animation.h"
+#include "startup_animation.h"
 
 #define DISP_HOR_RES 320
 #define DISP_VER_RES 170
@@ -200,22 +200,24 @@ bool lv_tick_timer_callback(struct repeating_timer *t)
 static void lcd_draw_fullscreen_rgb565(const uint8_t *frame_data)
 {
     lcd_addr_set(0, 0, DISP_HOR_RES - 1, DISP_VER_RES - 1);
-    lcd_wr_dat((uint8_t *)frame_data, DORO_FRAME_SIZE_BYTES);
+    lcd_wr_dat((uint8_t *)frame_data, STARTUP_FRAME_SIZE_BYTES);
     lcd_bus_wait();
 }
 
 static void play_startup_animation()
 {
-    uint32_t embedded_size = (uint32_t)(doro_frames_rgb565_end - doro_frames_rgb565);
-    if (embedded_size < DORO_ANIMATION_SIZE_BYTES) {
+    uint32_t embedded_size = (uint32_t)(startup_frames_rgb565_end - startup_frames_rgb565);
+    if (embedded_size < STARTUP_ANIMATION_SIZE_BYTES) {
         return;
     }
 
-    for (uint8_t repeat = 0; repeat < DORO_FRAME_REPEAT_COUNT; repeat++) {
-        for (uint8_t frame_index = 0; frame_index < DORO_FRAME_COUNT; frame_index++) {
-            const uint8_t *frame_data = doro_frames_rgb565 + frame_index * DORO_FRAME_SIZE_BYTES;
-            lcd_draw_fullscreen_rgb565(frame_data);
-            vTaskDelay_ms(DORO_FRAME_DELAY_MS);
+    for (uint8_t frame_index = 0; frame_index < STARTUP_FRAME_COUNT; frame_index++) {
+        const uint8_t *frame_data = startup_frames_rgb565 + frame_index * STARTUP_FRAME_SIZE_BYTES;
+        lcd_draw_fullscreen_rgb565(frame_data);
+        vTaskDelay_ms(STARTUP_FRAME_DELAY_MS);
+
+        if (frame_index == STARTUP_FRAME_COUNT - 1) {
+            vTaskDelay_ms(STARTUP_FINAL_FRAME_HOLD_MS);
         }
     }
 }

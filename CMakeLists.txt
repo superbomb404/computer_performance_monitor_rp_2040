@@ -13,16 +13,16 @@ set(PICO_FLASH_SIZE_BYTES "16 * 1024 * 1024" CACHE STRING "Board flash size" FOR
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-set(DORO_FRAMES_BIN ${CMAKE_CURRENT_SOURCE_DIR}/assets/doro_frames_rgb565.bin)
-file(TO_CMAKE_PATH "${DORO_FRAMES_BIN}" DORO_FRAMES_BIN_ASM)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/doro_animation.S.in
-    ${CMAKE_CURRENT_BINARY_DIR}/doro_animation.S
+set(STARTUP_FRAMES_BIN ${CMAKE_CURRENT_SOURCE_DIR}/assets/startup_frames_rgb565.bin)
+file(TO_CMAKE_PATH "${STARTUP_FRAMES_BIN}" STARTUP_FRAMES_BIN_ASM)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/startup_animation.S.in
+    ${CMAKE_CURRENT_BINARY_DIR}/startup_animation.S
     @ONLY)
 
 # rest of your project
 add_executable(computer_performance_monitor
     rtos_queue.c main.c rtos_task.c HarmonyOS_2bit.c
-    ${CMAKE_CURRENT_BINARY_DIR}/doro_animation.S
+    ${CMAKE_CURRENT_BINARY_DIR}/startup_animation.S
 )
 
 # enable usb output, disable uart output

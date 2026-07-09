@@ -1,0 +1,9 @@
+    .syntax unified
+    .section .rodata.startup_frames, "a", %progbits
+    .global startup_frames_rgb565
+    .global startup_frames_rgb565_end
+    .balign 4
+startup_frames_rgb565:
+    .incbin "@STARTUP_FRAMES_BIN_ASM@"
+    .balign 4
+startup_frames_rgb565_end:
