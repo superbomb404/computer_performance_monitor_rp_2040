@@ -12,6 +12,7 @@
 #include "pico/stdlib.h"
 #include <stdio.h>
 #include "rtos_queue.h"
+#include "doro_animation.h"
 
 #define DISP_HOR_RES 320
 #define DISP_VER_RES 170
@@ -196,6 +197,29 @@ bool lv_tick_timer_callback(struct repeating_timer *t)
 }
 
 // 计算进度条颜色
+static void lcd_draw_fullscreen_rgb565(const uint8_t *frame_data)
+{
+    lcd_addr_set(0, 0, DISP_HOR_RES - 1, DISP_VER_RES - 1);
+    lcd_wr_dat((uint8_t *)frame_data, DORO_FRAME_SIZE_BYTES);
+    lcd_bus_wait();
+}
+
+static void play_startup_animation()
+{
+    uint32_t embedded_size = (uint32_t)(doro_frames_rgb565_end - doro_frames_rgb565);
+    if (embedded_size < DORO_ANIMATION_SIZE_BYTES) {
+        return;
+    }
+
+    for (uint8_t repeat = 0; repeat < DORO_FRAME_REPEAT_COUNT; repeat++) {
+        for (uint8_t frame_index = 0; frame_index < DORO_FRAME_COUNT; frame_index++) {
+            const uint8_t *frame_data = doro_frames_rgb565 + frame_index * DORO_FRAME_SIZE_BYTES;
+            lcd_draw_fullscreen_rgb565(frame_data);
+            vTaskDelay_ms(DORO_FRAME_DELAY_MS);
+        }
+    }
+}
+
 uint32_t calc_color(uint8_t rate)
 {
     if (rate > 100) rate = 100;  // 限制rate的范围
@@ -280,6 +304,8 @@ void v_task_lcd_Init(void *pvParameters)
 
     // 开始屏幕初始化配置
     lcd_init();
+    gpio_put(LCD_PIN_NUM_BK_LIGHT, 1);
+    play_startup_animation();
 
     lv_init();
     static lv_disp_draw_buf_t draw_buf;

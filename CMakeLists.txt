@@ -8,13 +8,21 @@ include(FreeRTOS_Kernel_import.cmake)
 project(computer_performance_monitor C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+set(PICO_FLASH_SIZE_BYTES "16 * 1024 * 1024" CACHE STRING "Board flash size" FORCE)
 
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+set(DORO_FRAMES_BIN ${CMAKE_CURRENT_SOURCE_DIR}/assets/doro_frames_rgb565.bin)
+file(TO_CMAKE_PATH "${DORO_FRAMES_BIN}" DORO_FRAMES_BIN_ASM)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/doro_animation.S.in
+    ${CMAKE_CURRENT_BINARY_DIR}/doro_animation.S
+    @ONLY)
+
 # rest of your project
 add_executable(computer_performance_monitor
     rtos_queue.c main.c rtos_task.c HarmonyOS_2bit.c
+    ${CMAKE_CURRENT_BINARY_DIR}/doro_animation.S
 )
 
 # enable usb output, disable uart output
