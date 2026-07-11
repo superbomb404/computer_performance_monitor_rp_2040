@@ -1,0 +1,9 @@
+    .syntax unified
+    .section .rodata.usb_mode_image, "a", %progbits
+    .global usb_mode_image_rgb565
+    .global usb_mode_image_rgb565_end
+    .balign 4
+usb_mode_image_rgb565:
+    .incbin "@USB_MODE_IMAGE_BIN_ASM@"
+    .balign 4
+usb_mode_image_rgb565_end:

@@ -4,9 +4,9 @@
 #include "hardware/gpio.h"
 #include "task.h"
 #include "rtos_task.h"
-#include "pico/stdio_usb.h"
 #include "queue.h"
 #include "rtos_queue.h"
+#include "usb_device.h"
 
 void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName)
 {
@@ -24,11 +24,12 @@ void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName)
 int main()
 {
     stdio_init_all();
+    usb_device_init();
 
     queue_init();
 
     xTaskCreate(v_task_lcd_Init, "lcd_init", 1000, NULL, 31, NULL);
-    xTaskCreate(v_task_usb_uart, "usb_uart", 500, NULL, 1, NULL);
+    xTaskCreate(v_task_usb_uart, "usb_uart", 2048, NULL, 2, NULL);
     vTaskStartScheduler();
 
     while (1)
