@@ -10,9 +10,11 @@
 #include "stdlib.h"
 #include "lvgl-8.3.10/demos/lv_demos.h"
 #include "pico/stdlib.h"
-#include <stdio.h>
 #include "rtos_queue.h"
 #include "doro_animation.h"
+#include "tusb.h"
+#include "usb_device.h"
+#include "usb_mode_image.h"
 
 #define DISP_HOR_RES 320
 #define DISP_VER_RES 170
@@ -22,6 +24,16 @@ dma_channel_config dma_config;
 PIO pio;
 uint sm;
 extern lv_font_t HarmonyOS_2bit;
+
+static const lv_img_dsc_t usb_mode_image_dsc = {
+    .header.cf = LV_IMG_CF_TRUE_COLOR,
+    .header.always_zero = 0,
+    .header.reserved = 0,
+    .header.w = USB_MODE_IMAGE_WIDTH,
+    .header.h = USB_MODE_IMAGE_HEIGHT,
+    .data_size = USB_MODE_IMAGE_SIZE_BYTES,
+    .data = usb_mode_image_rgb565,
+};
 
 void lcd_bus_wait()
 {
@@ -199,7 +211,7 @@ bool lv_tick_timer_callback(struct repeating_timer *t)
 // 计算进度条颜色
 static void lcd_draw_fullscreen_rgb565(const uint8_t *frame_data)
 {
-    lcd_addr_set(0, 0, DISP_HOR_RES - 1, DISP_VER_RES - 1);
+    lcd_addr_set(0, 0, DORO_FRAME_WIDTH - 1, DORO_FRAME_HEIGHT - 1);
     lcd_wr_dat((uint8_t *)frame_data, DORO_FRAME_SIZE_BYTES);
     lcd_bus_wait();
 }
@@ -341,6 +353,38 @@ void v_task_lcd_Init(void *pvParameters)
     lv_style_set_pad_all(&cont_style, 4);
     lv_style_set_outline_width(&cont_style, 0);
     lv_obj_add_style(cont, &cont_style, 0);
+
+    lv_obj_t *usb_mode_cont = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(usb_mode_cont, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_layout(usb_mode_cont, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(usb_mode_cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(usb_mode_cont, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(usb_mode_cont, LV_OBJ_FLAG_HIDDEN);
+
+    lv_style_t usb_mode_style;
+    lv_style_init(&usb_mode_style);
+    lv_style_set_bg_color(&usb_mode_style, lv_color_hex(0x101010));
+    lv_style_set_border_width(&usb_mode_style, 0);
+    lv_style_set_radius(&usb_mode_style, 0);
+    lv_style_set_pad_all(&usb_mode_style, 0);
+    lv_style_set_pad_row(&usb_mode_style, 10);
+    lv_style_set_outline_width(&usb_mode_style, 0);
+    lv_obj_add_style(usb_mode_cont, &usb_mode_style, 0);
+
+    lv_obj_t *usb_mode_img = lv_img_create(usb_mode_cont);
+    lv_img_set_src(usb_mode_img, &usb_mode_image_dsc);
+
+    lv_obj_t *usb_mode_label = lv_label_create(usb_mode_cont);
+    lv_label_set_text(usb_mode_label, "当前为U盘模式\n请打开电脑安装上位机程序");
+    lv_obj_set_width(usb_mode_label, LV_HOR_RES);
+    lv_obj_set_style_text_align(usb_mode_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_style_t usb_mode_label_style;
+    lv_style_init(&usb_mode_label_style);
+    lv_style_set_text_color(&usb_mode_label_style, lv_color_hex(0xffffff));
+    lv_style_set_text_font(&usb_mode_label_style, &HarmonyOS_2bit);
+    lv_style_set_text_line_space(&usb_mode_label_style, 4);
+    lv_obj_add_style(usb_mode_label, &usb_mode_label_style, 0);
 
     lv_obj_t *panel0 = lv_obj_create(cont);
     lv_obj_set_size(panel0, 304, 35);
@@ -525,11 +569,28 @@ void v_task_lcd_Init(void *pvParameters)
     lv_obj_add_style(bar5, &bar_style, 0);
 
     config_lcd lcd_data_temp;
+    uint32_t usb_mode_seen_generation = usb_device_disk_mode_generation();
+    bool usb_mode_visible = false;
     uint8_t ram_utilization_rate = 0, ram_used = 0, ram_total = 0, gpu_ram_utilization_rate = 0, gpu_ram_used = 0, gpu_ram_total = 0;
     uint8_t ram_utilization_rate_decimal = 0, ram_used_decimal = 0, ram_total_decimal = 0;
     uint8_t gpu_ram_utilization_rate_decimal = 0, gpu_ram_used_decimal = 0, gpu_ram_total_decimal = 0;
     while (1)
     {
+        bool usb_mode_active = usb_device_disk_mode_is_active();
+        uint32_t usb_mode_generation = usb_device_disk_mode_generation();
+        if (usb_mode_active != usb_mode_visible || usb_mode_generation != usb_mode_seen_generation) {
+            usb_mode_visible = usb_mode_active;
+            usb_mode_seen_generation = usb_mode_generation;
+            if (usb_mode_visible) {
+                lv_obj_add_flag(cont, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(usb_mode_cont, LV_OBJ_FLAG_HIDDEN);
+            }
+            else {
+                lv_obj_add_flag(usb_mode_cont, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(cont, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+
         if (x_queue_lcd != 0 && xQueueReceive(x_queue_lcd, &(lcd_data_temp), 50))
         {
             switch (lcd_data_temp.command)
@@ -617,9 +678,9 @@ void v_task_lcd_Init(void *pvParameters)
 
 void usb_uart_send(uint8_t *buf, uint8_t buf_len)
 {
-    for (uint8_t i = 0; i < buf_len; i++)
-    {
-        putchar_raw(buf[i]);
+    if (tud_cdc_connected()) {
+        tud_cdc_write(buf, buf_len);
+        tud_cdc_write_flush();
     }
 }
 
@@ -630,179 +691,183 @@ void v_task_usb_uart(void *pvParameters)
     buf[0] = 0x5a;
     while (1)
     {
-        uint8_t dat;
-        dat = getchar();
-        // printf("%c", dat);
+        usb_device_task();
 
-        if (dat == 0xa5 && rx_pre == 1)
+        while (tud_cdc_available())
         {
-            buf_rx_i = 1;
-        }
+            uint8_t dat;
+            tud_cdc_read(&dat, 1);
 
-        if (dat == 0x5a)
-        {
-            rx_pre = 1;
-        }
-        else
-        {
-            rx_pre = 0;
-        }
-
-        if (buf_rx_i < 4)
-        {
-            buf[buf_rx_i] = dat;
-            buf_rx_i++;
-        }
-
-        if (buf_rx_i == 4)
-        {
-            // printf("%s", buf);
-            // 开始处理指令
-            uint8_t cmd = buf[2];
-            switch (cmd)
+            if (dat == 0xa5 && rx_pre == 1)
             {
-            case 0xff:
-                if (buf[3] == 0x01)
+                buf_rx_i = 1;
+            }
+
+            if (dat == 0x5a)
+            {
+                rx_pre = 1;
+            }
+            else
+            {
+                rx_pre = 0;
+            }
+
+            if (buf_rx_i < 4)
+            {
+                buf[buf_rx_i] = dat;
+                buf_rx_i++;
+            }
+
+            if (buf_rx_i == 4)
+            {
+                // 开始处理指令
+                uint8_t cmd = buf[2];
+                switch (cmd)
                 {
+                case 0xff:
+                    if (buf[3] == 0x01)
+                    {
+                        usb_device_note_host_app_connected();
+                        ret_buf[0] = 0x5a;
+                        ret_buf[1] = 0xa5;
+                        ret_buf[2] = 0xff;
+                        ret_buf[3] = 0x10;
+                        usb_uart_send(ret_buf, 4);
+                    }
+                    break;
+                case 0x01:
+                    x_queue_lcd_send(LCD_COMMAND_CPU_TEMPERATUE, buf[3]);
                     ret_buf[0] = 0x5a;
                     ret_buf[1] = 0xa5;
-                    ret_buf[2] = 0xff;
-                    ret_buf[3] = 0x10;
+                    ret_buf[2] = 0x01;
+                    ret_buf[3] = 0xff;
                     usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x02:
+                    x_queue_lcd_send(LCD_COMMAND_CPU_UTILIZATION_RATE, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x02;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x03:
+                    x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x03;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x04:
+                    x_queue_lcd_send(LCD_COMMAND_RAM_UESD, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x04;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x05:
+                    x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x05;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x06:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_TEMPERATUE, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x06;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x07:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_UTILIZATION_RATE, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x07;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x08:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x08;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x09:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x09;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x0A:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x0A;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x0B:
+                    x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE_DECIMAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x0B;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x0C:
+                    x_queue_lcd_send(LCD_COMMAND_RAM_UESD_DECIMAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x0C;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x0D:
+                    x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL_DECIMAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x0D;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x0E:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE_DECIMAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x0E;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x0F:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD_DECIMAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x0F;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                case 0x10:
+                    x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL_DECIMAL, buf[3]);
+                    ret_buf[0] = 0x5a;
+                    ret_buf[1] = 0xa5;
+                    ret_buf[2] = 0x10;
+                    ret_buf[3] = 0xff;
+                    usb_uart_send(ret_buf, 4);
+                    break;
+                default:
+                    break;
                 }
-                break;
-            case 0x01:
-                x_queue_lcd_send(LCD_COMMAND_CPU_TEMPERATUE, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x01;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x02:
-                x_queue_lcd_send(LCD_COMMAND_CPU_UTILIZATION_RATE, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x02;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x03:
-                x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x03;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x04:
-                x_queue_lcd_send(LCD_COMMAND_RAM_UESD, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x04;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x05:
-                x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x05;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x06:
-                x_queue_lcd_send(LCD_COMMAND_GPU_TEMPERATUE, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x06;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x07:
-                x_queue_lcd_send(LCD_COMMAND_GPU_UTILIZATION_RATE, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x07;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x08:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x08;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x09:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x09;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x0A:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x0A;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x0B:
-                x_queue_lcd_send(LCD_COMMAND_RAM_UTILIZATION_RATE_DECIMAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x0B;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x0C:
-                x_queue_lcd_send(LCD_COMMAND_RAM_UESD_DECIMAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x0C;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x0D:
-                x_queue_lcd_send(LCD_COMMAND_RAM_TOTAL_DECIMAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x0D;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x0E:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UTILIZATION_RATE_DECIMAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x0E;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x0F:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_UESD_DECIMAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x0F;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            case 0x10:
-                x_queue_lcd_send(LCD_COMMAND_GPU_RAM_TOTAL_DECIMAL, buf[3]);
-                ret_buf[0] = 0x5a;
-                ret_buf[1] = 0xa5;
-                ret_buf[2] = 0x10;
-                ret_buf[3] = 0xff;
-                usb_uart_send(ret_buf, 4);
-                break;
-            default:
-                break;
+                buf_rx_i = 5;
             }
-            buf_rx_i = 5;
         }
         vTaskDelay(1);
     }

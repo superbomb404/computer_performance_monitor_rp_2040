@@ -1,0 +1,9 @@
+    .syntax unified
+    .section .rodata.host_package_disk, "a", %progbits
+    .global host_package_disk
+    .global host_package_disk_end
+    .balign 4
+host_package_disk:
+    .incbin "@HOST_PACKAGE_DISK_BIN_ASM@"
+    .balign 4
+host_package_disk_end:
