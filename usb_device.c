@@ -12,6 +12,7 @@ extern const uint8_t host_package_disk_end[];
 
 static volatile bool g_host_app_connected = false;
 static volatile bool g_disk_mode_active = false;
+static volatile bool g_disk_unit_attention = false;
 static volatile uint32_t g_disk_mode_generation = 0;
 static uint32_t g_usb_started_ms = 0;
 
@@ -29,6 +30,7 @@ void usb_device_task(void)
         uint32_t now_ms = to_ms_since_boot(get_absolute_time());
         if ((uint32_t)(now_ms - g_usb_started_ms) >= USB_DISK_MODE_TIMEOUT_MS) {
             g_disk_mode_active = true;
+            g_disk_unit_attention = true;
             g_disk_mode_generation++;
         }
     }
@@ -49,6 +51,7 @@ void usb_device_note_host_app_connected(void)
     g_host_app_connected = true;
     if (g_disk_mode_active) {
         g_disk_mode_active = false;
+        g_disk_unit_attention = false;
         g_disk_mode_generation++;
     }
 }
@@ -65,6 +68,12 @@ bool tud_msc_test_unit_ready_cb(uint8_t lun)
 {
     if (!g_disk_mode_active) {
         tud_msc_set_sense(lun, SCSI_SENSE_NOT_READY, 0x3A, 0x00);
+        return false;
+    }
+
+    if (g_disk_unit_attention) {
+        g_disk_unit_attention = false;
+        tud_msc_set_sense(lun, SCSI_SENSE_UNIT_ATTENTION, 0x28, 0x00);
         return false;
     }
 
@@ -91,6 +100,7 @@ bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, boo
 
     if (load_eject && !start && g_disk_mode_active) {
         g_disk_mode_active = false;
+        g_disk_unit_attention = false;
         g_disk_mode_generation++;
     }
 
