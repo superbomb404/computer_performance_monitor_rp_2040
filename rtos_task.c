@@ -378,18 +378,6 @@ void v_task_lcd_Init(void *pvParameters)
     lv_obj_t *usb_mode_img = lv_img_create(usb_mode_cont);
     lv_img_set_src(usb_mode_img, &usb_mode_image_dsc);
 
-    lv_obj_t *usb_mode_label = lv_label_create(usb_mode_cont);
-    lv_label_set_text(usb_mode_label, "当前为U盘模式\n请打开电脑安装上位机程序");
-    lv_obj_set_width(usb_mode_label, LV_HOR_RES);
-    lv_obj_set_style_text_align(usb_mode_label, LV_TEXT_ALIGN_CENTER, 0);
-
-    lv_style_t usb_mode_label_style;
-    lv_style_init(&usb_mode_label_style);
-    lv_style_set_text_color(&usb_mode_label_style, lv_color_hex(0xffffff));
-    lv_style_set_text_font(&usb_mode_label_style, &HarmonyOS_2bit);
-    lv_style_set_text_line_space(&usb_mode_label_style, 4);
-    lv_obj_add_style(usb_mode_label, &usb_mode_label_style, 0);
-
     lv_obj_t *panel0 = lv_obj_create(cont);
     lv_obj_set_size(panel0, 304, 35);
 
